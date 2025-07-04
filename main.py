@@ -14,7 +14,15 @@ API_TOKEN = os.getenv("WIKIDOCS_API_TOKEN")
 # --- MCP 서버 인스턴스 생성 ---
 mcp_server = FastMCP(
     name="Wikidocs Enhanced Server",
-    instructions="이 서버는 위키독스의 책, 페이지, 블로그 콘텐츠를 조회하고 수정하는 기능을 제공합니다."
+    instructions="""이 서버는 위키독스 책과 블로그 콘텐츠를 조회하고 수정하는 기능을 제공합니다.
+
+중요 사용 가이드:
+- 책에 새 페이지를 추가할 때는 `create_page`를 사용하고, `update_page`는 기존 페이지를 수정할 때만 사용하세요.
+- `create_page` 사용 도중에 출력이 중단되는 경우, 임의의 페이지 ID로 `update_page`를 시도해서는 안 됩니다.
+- 존재하지 않거나 알지 못하는 페이지 ID에 대해 `update_page`를 절대 사용하지 마세요.
+
+참고:
+- 책의 페이지 ID는 책 내에서뿐 아니라 위키독스에서 글로벌하게 고유합니다."""
 )
 
 # --- 유틸리티 함수 ---
@@ -49,8 +57,8 @@ async def _make_api_request(method: str, endpoint: str, data: Optional[Dict] = N
     except Exception as e:
         return {"error": "Request Failed", "message": str(e)}
 
-async def _upsert_page(page_id: int, data: Dict[str, Any]) -> dict:
-    """페이지를 생성하거나 수정하는 함수"""
+async def _put_page(page_id: int, data: Dict[str, Any]) -> dict:
+    """/napi/pages/{page_id} : 페이지를 수정합니다. (신규 페이지 등록인 경우에는 page_id 에 -1 설정)"""
     data['depth'] = 0
     data['seq'] = 0
     return await _make_api_request("PUT", f"/pages/{page_id}/", data)
@@ -59,30 +67,33 @@ async def _upsert_page(page_id: int, data: Dict[str, Any]) -> dict:
 
 @mcp_server.tool(
     name="list_my_books",
-    description="내가 작성한 모든 위키독스 책 목록을 조회합니다."
+    description="사용자 본인이 작성한 모든 위키독스 책 목록을 조회합니다."
 )
 async def list_my_books() -> Dict[str, Any]:
-    """사용자의 책 목록을 도구로 제공"""
+    """/napi/books : 본인이 작성한 책을 조회합니다."""
     result = await _make_api_request("GET", "/books/")
     if "error" in result:
         return result
     return {"books": result, "total_count": len(result)}
 
-@mcp_server.tool(
-    name="get_book_pages",
-    description="특정 책 ID에 포함된 모든 페이지(목차) 목록을 조회합니다."
-)
-async def get_book_pages(book_id: int) -> Dict[str, Any]:
-    """책의 페이지 목록을 반환"""
-    return await _make_api_request("GET", f"/books/{book_id}/")
 
 @mcp_server.tool(
-    name="get_page_content",
-    description="주어진 페이지 ID의 내용을 조회합니다."
+    name="get_book_info",
+    description="책을 조회합니다. 책에 속한 페이지 목록이 함께 조회됩니다. 단, 페이지가 많을 경우 완전한 목록을 제공하지 못할 수 있습니다."
 )
-async def get_page_content(page_id: int) -> Dict[str, Any]:
-    """페이지 내용을 반환"""
+async def get_book_info(book_id: int) -> Dict[str, Any]:
+    """/napi/books/{book_id} : 책을 조회합니다. 책에 속해 있는 모든 페이지가 함께 조회됩니다."""
+    return await _make_api_request("GET", f"/books/{book_id}/")
+
+
+@mcp_server.tool(
+    name="get_page",
+    description="주어진 페이지 ID로 페이지를 조회합니다. "
+)
+async def get_page(page_id: int) -> Dict[str, Any]:
+    """/napi/pages/{page_id} : 페이지를 조회합니다."""
     return await _make_api_request("GET", f"/pages/{page_id}/")
+
 
 @mcp_server.tool(
     name="create_page",
@@ -106,7 +117,8 @@ async def create_page(
         "book_id": book_id,
         "open_yn": open_yn
     }
-    return await _upsert_page(page_id=-1, data=new_page_data)
+    return await _put_page(page_id=-1, data=new_page_data)
+
 
 @mcp_server.tool(
     name="update_page",
@@ -128,7 +140,7 @@ async def update_page(
         "book_id": 0,
         "open_yn": open_yn
     }
-    return await _upsert_page(page_id=page_id, data=update_data)
+    return await _put_page(page_id=page_id, data=update_data)
 
 # === 블로그 도구들 ===
 
