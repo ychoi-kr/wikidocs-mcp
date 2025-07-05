@@ -2,7 +2,7 @@
 
 AI 에이전트가 위키독스(Wikidocs) 책과 블로그를 읽고, 편집하고, 관리할 수 있도록 하는 **Model Context Protocol (MCP)** 서버입니다.
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-green.svg)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
