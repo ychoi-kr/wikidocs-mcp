@@ -16,9 +16,10 @@ def register_book_tools(mcp_server):
             return result
         return {"books": result, "total_count": len(result)}
 
+
     @mcp_server.tool(
         name="get_book_info",
-        description="책을 조회하고 로컬 캐시에 저장합니다. 대량의 페이지 데이터를 효율적으로 처리하기 위해 캐시를 사용합니다."
+        description="특정 책의 기본 정보(제목, 요약, 페이지 수)와 모든 페이지 데이터를 조회합니다. 이후 검색이나 구조 분석 도구를 사용하기 위해 필요한 첫 번째 단계입니다."
     )
     async def get_book_info(book_id: int, force_refresh: bool = False) -> Dict[str, Any]:
         """/napi/books/{book_id} : 책을 조회하고 캐시에 저장합니다."""
@@ -29,12 +30,11 @@ def register_book_tools(mcp_server):
             cached_data = cache.load_book_data(book_id)
             if cached_data:
                 return {
-                    "message": "캐시에서 로드됨",
                     "book_id": book_id,
                     "subject": cached_data.get("subject", ""),
+                    "summary": cached_data.get("summary", ""),
                     "total_pages": len(cached_data.get("pages", [])),
-                    "cached": True,
-                    "tip": "페이지 검색을 위해 search_book_pages 도구를 사용하세요."
+                    "status": "ready"
                 }
         
         # API에서 데이터 가져오기
@@ -46,13 +46,13 @@ def register_book_tools(mcp_server):
         cache.save_book_data(book_id, book_data)
         
         return {
-            "message": "책 정보를 성공적으로 가져와서 캐시에 저장했습니다.",
             "book_id": book_id,
             "subject": book_data.get("subject", ""),
+            "summary": book_data.get("summary", ""),
             "total_pages": len(book_data.get("pages", [])),
-            "cached": True,
-            "tip": "이제 search_book_pages 도구로 특정 키워드를 검색할 수 있습니다."
+            "status": "ready"
         }
+
 
     @mcp_server.tool(
         name="search_book_pages",
@@ -68,25 +68,33 @@ def register_book_tools(mcp_server):
             return {"error": "검색어를 입력해주세요."}
         
         searcher = get_page_searcher()
+        cache = get_book_cache()
         
-        # 캐시 확인
+        # 캐시 확인, 없으면 API에서 가져오기
         cache_info = searcher.get_cache_info(book_id)
         if not cache_info.get("cached"):
-            return {
-                "error": "책 데이터가 캐시되지 않았습니다. 먼저 get_book_info 도구를 사용하여 책 정보를 로드해주세요."
-            }
+            # API에서 책 데이터 가져오기
+            book_data = await make_api_request("GET", f"/books/{book_id}/")
+            if "error" in book_data:
+                return book_data
+            
+            # 캐시에 저장
+            cache.save_book_data(book_id, book_data)
         
         # 검색 실행
         results = searcher.search_pages(book_id, query, max_results)
+        
+        # 최신 캐시 정보 가져오기
+        cache_info = searcher.get_cache_info(book_id)
         
         return {
             "query": query,
             "book_id": book_id,
             "book_subject": cache_info.get("book_subject", ""),
             "total_matches": len(results),
-            "results": results,
-            "tip": "특정 페이지의 전체 내용을 보려면 get_page 도구를 사용하세요."
+            "results": results
         }
+
 
     @mcp_server.tool(
         name="get_book_structure",
@@ -95,24 +103,33 @@ def register_book_tools(mcp_server):
     async def get_book_structure(book_id: int, max_depth: int = 2) -> Dict[str, Any]:
         """책의 구조 요약"""
         searcher = get_page_searcher()
+        cache = get_book_cache()
         
-        # 캐시 확인
+        # 캐시 확인, 없으면 API에서 가져오기
         cache_info = searcher.get_cache_info(book_id)
         if not cache_info.get("cached"):
-            return {
-                "error": "책 데이터가 캐시되지 않았습니다. 먼저 get_book_info 도구를 사용하여 책 정보를 로드해주세요."
-            }
+            # API에서 책 데이터 가져오기
+            book_data = await make_api_request("GET", f"/books/{book_id}/")
+            if "error" in book_data:
+                return book_data
+            
+            # 캐시에 저장
+            cache.save_book_data(book_id, book_data)
         
+        # 구조 추출
         structure = searcher.get_book_structure(book_id, max_depth)
+        
+        # 최신 캐시 정보 가져오기
+        cache_info = searcher.get_cache_info(book_id)
         
         return {
             "book_id": book_id,
             "book_subject": cache_info.get("book_subject", ""),
             "total_pages": cache_info.get("total_pages", 0),
             "max_depth": max_depth,
-            "structure": structure,
-            "tip": "더 자세한 내용은 search_book_pages나 get_page 도구를 사용하세요."
+            "structure": structure
         }
+
 
     @mcp_server.tool(
         name="get_cache_status",
@@ -128,6 +145,7 @@ def register_book_tools(mcp_server):
             "cache_info": cache_info
         }
 
+
     @mcp_server.tool(
         name="get_page",
         description="주어진 페이지 ID로 페이지를 조회합니다."
@@ -135,6 +153,7 @@ def register_book_tools(mcp_server):
     async def get_page(page_id: int) -> Dict[str, Any]:
         """/napi/pages/{page_id} : 페이지를 조회합니다."""
         return await make_api_request("GET", f"/pages/{page_id}/")
+
 
     @mcp_server.tool(
         name="create_page",
@@ -246,3 +265,4 @@ def register_book_tools(mcp_server):
         """페이지용 이미지를 업로드"""
         data = {'page_id': page_id}
         return await upload_image("/images/upload/", file_path, data)
+
