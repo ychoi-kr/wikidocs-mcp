@@ -149,7 +149,7 @@ def register_book_tools(mcp_server):
     ) -> Dict[str, Any]:
         """새 페이지를 생성"""
         new_page_data = {
-            "id": 0,
+            "id": 0,  # 없으면 오류 발생하므로 생략하지 말 것
             "subject": subject,
             "content": content,
             "parent_id": parent_id,
@@ -162,51 +162,81 @@ def register_book_tools(mcp_server):
         
         # 성공 시 캐시 무효화 (다음 조회 시 새로 로드)
         if not result.get("error"):
-            cache = get_book_cache()
-            cache_path = cache._get_cache_path(book_id)
-            meta_path = cache._get_cache_meta_path(book_id)
-            
-            # 캐시 파일 삭제하여 무효화
-            import os
-            for path in [cache_path, meta_path]:
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except:
-                        pass
+            get_book_cache().invalidate_book(book_id)
         
         return result
 
+
     @mcp_server.tool(
         name="update_page",
-        description="페이지(page_id)의 제목(subject), 내용(content), 상위 페이지(parent_id), 공개 여부(open_yn)를 수정합니다."
+        description=(
+            "위키독스 page_id 페이지의 제목(subject), 내용(content), 부모 페이지 ID(parent_id), 또는 공개 여부(open_yn, Y 또는 N)를 수정합니다. "
+            "수정하고 싶은 필드들만 전달해 호출하면 되며, 생략된 필드는 서버에 저장된 기존 값을 그대로 사용합니다."
+        )
     )
+
     async def update_page(
-        page_id: int, 
-        subject: str, 
-        content: str, 
-        parent_id: int, 
-        open_yn: str
-    ) -> Dict[str, Any]:
-        """페이지 내용을 수정"""
-        update_data = {
-            "id": page_id,
-            "subject": subject,
-            "content": content,
-            "parent_id": parent_id,
-            "book_id": 0,  # 업데이트 시 book_id는 0으로 설정
-            "open_yn": open_yn
+        page_id:   int,
+        subject:   str | None = None,
+        content:   str | None = None,
+        parent_id: int | None = None,
+        open_yn:   str | None = None,
+    ) -> dict[str, Any]:
+        """
+        PUT /napi/pages/{page_id}/
+    
+        Workflow
+        --------
+        1. GET 현재 페이지 → diff 계산
+        2. current 복사 후 전달된 파라미터만 덮어써 updated 생성
+           (→ 결과적으로 **모든 필드**가 포함된 완전한 페이로드)
+        3. 변경 사항 없으면 {"error": "NO_CHANGES"} 반환
+        4. 성공 시 캐시 무효화 + updated_fields 리스트 반환
+    
+    
+        Notes
+        -----
+        - 미전달 필드는 **기존 값으로 채워져** 서버에 그대로 남습니다.
+        - 파라미터를 하나도 바꾸지 않으면 PUT 호출을 생략해 네트워크 트래픽을 절약합니다.
+        """
+
+        # 1) 현재 상태 조회
+        current = await make_api_request("GET", f"/pages/{page_id}/")
+        if "error" in current:
+            return current        # 404·권한 오류 등 그대로 반환
+    
+       # 2) diff → payload 만들기
+        payload = {
+            "id":        page_id,                 # 필수
+            "subject":   subject   if subject   is not None else current["subject"],
+            "content":   content   if content   is not None else current["content"],
+            "parent_id": parent_id if parent_id is not None else current["parent_id"],
+            "open_yn":   open_yn   if open_yn   is not None else current["open_yn"],
+            "book_id":   current["book_id"],      # 명세상 필요 (0 으로 줘도 되지만 안전하게)
         }
-        result = await put_page(page_id=page_id, data=update_data)
-        
-        # 성공 시 관련 캐시 무효화
-        if not result.get("error"):
-            # 페이지가 속한 책의 캐시를 무효화해야 하지만, 
-            # 현재 API 응답에서 book_id를 알 수 없으므로 
-            # 모든 캐시를 무효화하거나 별도 로직 필요
-            pass
-        
+     
+        delta_fields = [
+            k for k in ("subject", "content", "parent_id", "open_yn")
+            if payload[k] != current[k]
+        ]
+
+        if not delta_fields:
+            return {
+                "error": "NO_CHANGES",
+                "message": "변경된 값이 없습니다. 수정할 항목을 하나 이상 넣어 주세요."
+            }
+    
+        # 3) PUT
+        result = await put_page(page_id, payload)
+    
+        # 4) 캐시 무효화
+        if "error" not in result:
+            get_book_cache().invalidate_book(current["book_id"])
+    
+        # 5) 바뀐 필드 정보 반환 (UX 용)
+        result["updated_fields"] = delta_fields
         return result
+
 
     @mcp_server.tool(
         name="upload_page_image",

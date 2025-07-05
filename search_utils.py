@@ -84,6 +84,18 @@ class BookCache:
         except Exception as e:
             print(f"Warning: Failed to load cache for book {book_id}: {e}", file=sys.stderr)
             return None
+    
+    def invalidate_book(self, book_id: int) -> None:
+        """해당 책 캐시 파일과 메타파일을 모두 삭제"""
+        for path in (
+            self._get_cache_path(book_id),
+            self._get_cache_meta_path(book_id)
+        ):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError as e:
+                print(f"[Cache] remove failed {path}: {e}", file=sys.stderr)
 
 
 class PageSearcher:
@@ -105,18 +117,30 @@ class PageSearcher:
         text = re.sub(r'\s+', ' ', text).strip()
         return text.lower()
     
+    def _flatten_pages(self, pages: list[dict]) -> list[dict]:
+        flat: list[dict] = []
+        stack = pages[:]          # 복사해서 스택으로 사용
+        while stack:
+            node = stack.pop()
+            flat.append(node)
+            # children 이 있을 때 스택에 push
+            for child in reversed(node.get("children", [])):  # 깊이 우선
+                stack.append(child)
+        return flat
+
     def search_pages(self, book_id: int, query: str, max_results: int = 20) -> List[Dict[str, Any]]:
         """페이지에서 키워드 검색"""
         book_data = self.cache.load_book_data(book_id)
         if not book_data:
             return []
-        
+
         query_normalized = self._normalize_text(query)
         if not query_normalized:
             return []
         
         results = []
         pages = book_data.get('pages', [])
+        pages = self._flatten_pages(book_data.get("pages", []))
         
         for page in pages:
             score = self._calculate_relevance_score(page, query_normalized)
@@ -211,7 +235,7 @@ class PageSearcher:
         if not book_data:
             return []
         
-        pages = book_data.get('pages', [])
+        pages = self._flatten_pages(book_data.get("pages", []))
         structure = []
         
         for page in pages:
