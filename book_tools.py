@@ -189,8 +189,11 @@ def register_book_tools(mcp_server):
     @mcp_server.tool(
         name="update_page",
         description=(
-            "위키독스 page_id 페이지의 제목(subject), 내용(content), 부모 페이지 ID(parent_id), 또는 공개 여부(open_yn, Y 또는 N)를 수정합니다. "
-            "수정하고 싶은 필드들만 전달해 호출하면 되며, 생략된 필드는 서버에 저장된 기존 값을 그대로 사용합니다."
+            "위키독스 페이지를 수정합니다. "
+            "`page_id`는 필수입니다. "
+            "제목(`subject`), 내용(`content`), 부모 페이지 ID(`parent_id`), 또는 공개 여부(`open_yn`, Y 또는 N) 중 하나 이상을 반드시 전달해야 합니다. "
+            "`old_str`/`new_str` 매개변수는 지원되지 않습니다. 전체 `content`를 전달하세요. "
+            "생략된 필드는 서버에 저장된 기존 값을 그대로 사용하게 됩니다."
         )
     )
 
@@ -265,4 +268,150 @@ def register_book_tools(mcp_server):
         """페이지용 이미지를 업로드"""
         data = {'page_id': page_id}
         return await upload_image("/images/upload/", file_path, data)
+
+
+    @mcp_server.tool(
+        name="get_wikidocs_formatting_guide",
+        description="위키독스 책 페이지 작성을 위한 마크다운 포매팅 가이드를 조회합니다. 책 페이지를 생성하거나 수정하기 전에 이 가이드를 참조하세요."
+    )
+    async def get_wikidocs_formatting_guide() -> str:
+        """위키독스 책 페이지 포매팅 가이드를 반환"""
+        return """# 위키독스 책 페이지 포매팅 가이드
+
+## 🚨 핵심 주의사항
+
+### 1. 헤딩 규칙 (매우 중요!)
+- 내용 작성 시 **H1 태그 사용 금지!** → H2(##) 또는 H3(###)부터 시작
+- 이유: H1은 전자책 변환 시 자동으로 챕터로 인식됨
+- H2에는 자동으로 밑줄이 적용됨
+- 계층 구조: `## → ### → ####` 순서로 사용
+- 페이지 제목을 첫 번째 줄에 작성할 경우 제목이 중복으로 표시되므로, 페이지 제목 없이 페이지 도입부 또는 섹션 제목으로 내용을 시작하는 것이 좋습니다.
+
+### 2. 리스트 작성 규칙
+- **본문 뒤 리스트 작성 시 반드시 공백 한 줄 삽입**
+```
+본문 내용입니다.
+
+- 리스트 항목 1
+- 리스트 항목 2
+```
+
+- **중첩 리스트**: 하위 항목은 4칸 들여쓰기
+```
+- 상위 항목
+    - 하위 항목 (4칸 들여쓰기)
+    - 하위 항목 2
+```
+
+### 3. 코드 블록 규칙
+**본문 뒤 코드 블록 작성 시 반드시 공백 한 줄 삽입**
+
+**일반 코드**: 백쿼트 3개 또는 4칸 들여쓰기
+
+```python
+# 일반 코드 블록
+def example():
+    return "hello"
+```
+
+**⚠️ 리스트 내 코드**: 백쿼트 불가! 반드시 8칸 들여쓰기
+
+```
+- 설명
+        # 리스트 내 코드는 8칸 들여쓰기만 가능
+        def list_code():
+            return "example"
+```
+
+### 4. 그 밖의 특이 사항
+- 물결표(tilde)가 일반 문자열로 인식되므로 앞에 백슬래시를 넣지 마세요.
+- 특수 기호(볼드체를 위한 asterisk, 이스케이프를 뜻하는 백슬래시 등)를 실수로 이스케이프하여 렌더링 결과에 그대로 노출하지 않게 유의하세요.
+
+
+## 🎨 위키독스 전용 특수 기능
+
+**팁 블록**
+
+[[TIP]]
+**팁 블록에 대하여**
+
+도움말이나 팁을 설명하는 블록을 작성할 수 있습니다.  
+팁 블록 위의 섹션 제목과 팁 블록 사이에 적절한 맥락을 제공해야 구조적으로 어색하지 않습니다.
+팁 블록 내에서는 일부 마크다운 렌더링이 작동하지 않습니다. 예를 들어, 팁 블록 제목은 **굵은 글씨**로 표시하세요.
+[[/TIP]]
+
+**사용자 정의 팁 블록**
+
+[[TIP("알아두기")]]
+**팁 블록에 대하여**
+
+도움말이나 팁을 설명하는 블록을 작성할 수 있습니다.
+[[/TIP]]
+
+**목차 자동생성 (해당 위치에 목차가 생성됨. 가급적 처음 제목이 나오기 전에 넣는 것이 구조상 논리적임)**
+
+[TOC]
+
+**코드 블록 내 강조**
+
+```python
+def sum(a, b):
+    [[MARK]]return a+b[[/MARK]]
+```
+
+**코드 블록 내 삭제 표시**
+
+```python
+def sum(a, b):
+    [[SMARK]]return a+b[[/SMARK]]
+```
+
+**용어 링크**
+
+[["용어명"]]
+
+
+## 🖼️ 이미지 처리
+- **기본**: `![alt텍스트](이미지URL)`
+- **가운데 정렬**:
+```html
+<p align="center">
+<img src="이미지URL" alt="설명">
+</p>
+```
+- **⚠️ 전자책 판매용**: img 태그 사용 금지 (PDF 호환성 문제)
+
+## 🧮 수식 표현 (MathJax)
+- **블록 수식**: `$$수식$$`
+- **인라인 수식**: `$수식$` (⚠️ 공백 없이! 매우 중요)
+- **줄바꿈**: `\\\\` 사용
+- **정렬**: `\\begin{aligned}` 환경 활용
+
+### 수식 예시
+```
+$$
+\\begin{aligned}
+f(x) &= ax^2 + bx + c \\\\
+&= a(x + \\frac{b}{2a})^2 + c - \\frac{b^2}{4a}
+\\end{aligned}
+$$
+```
+
+## 📺 미디어 삽입
+### 유튜브 동영상
+```html
+<style>.embed-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; } .embed-container iframe, .embed-container object, .embed-container embed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }</style><div class='embed-container'><iframe src='https://www.youtube.com/embed/동영상ID' frameborder='0' allowfullscreen></iframe></div>
+```
+
+## ✅ 체크리스트
+
+책 페이지 작성 전 반드시 확인:
+- [ ] H1 태그 사용하지 않았는가?
+- [ ] 본문 뒤 리스트에 공백 한 줄 넣었는가?
+- [ ] 리스트 내 코드를 8칸 들여쓰기로 작성했는가?
+- [ ] 수식에서 $ 기호 앞뒤에 공백을 넣지 않았는가?
+- [ ] 전자책용이면 HTML 태그를 피했는가?
+
+이 가이드를 따라야 위키독스에서 올바르게 렌더링됩니다!"""
+
 
