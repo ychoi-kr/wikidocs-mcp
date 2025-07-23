@@ -69,6 +69,13 @@ Claude Desktop을 재시작하고 다음과 같이 테스트해 보세요.
 내 책 목록을 보여줘
 ```
 
+MCP 클라이언트가 인자 없이 툴을 호출하는 문제를 진단하려면 CLI에서 직접
+다음을 실행해 보세요.
+
+```bash
+claude mcp call wikidocs-mcp get_book_structure --json '{"book_id": 12345, "max_depth": 3}'
+```
+
 ## 🛠️ 도구 목록
 
 ### 📖 책 관리 도구
