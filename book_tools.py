@@ -1,4 +1,5 @@
 from typing import Dict, Any, List
+import sys
 from utils import make_api_request, put_page, upload_image, flatten_pages
 from search_utils import get_book_cache, get_page_searcher
 
@@ -104,8 +105,32 @@ def register_book_tools(mcp_server):
         name="get_book_structure",
         description="책의 목차 구조를 간단히 요약합니다. 대량의 페이지가 있는 책에서 전체 구조를 파악할 때 유용합니다."
     )
-    async def get_book_structure(book_id: int, max_depth: int = 2) -> Dict[str, Any]:
-        """책의 구조 요약"""
+    async def get_book_structure(
+        book_id: int | None = None,
+        max_depth: int | None = 2,
+    ) -> Dict[str, Any]:
+        """책의 구조 요약
+
+        `book_id`가 전달되지 않으면 오류 객체를 반환합니다.
+        `max_depth`가 None이면 기본값 2를 사용합니다.
+        """
+        if book_id is None:
+            return {
+                "isError": True,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "book_id 인자가 누락되었다. 정수 book_id를 전달해라.",
+                    }
+                ],
+            }
+        if max_depth is None:
+            max_depth = 2
+
+        print(
+            f"[DEBUG] get_book_structure 호출됨 - book_id={book_id} max_depth={max_depth}",
+            file=sys.stderr,
+        )
         searcher = get_page_searcher()
         cache = get_book_cache()
         
@@ -154,8 +179,26 @@ def register_book_tools(mcp_server):
         name="get_page",
         description="주어진 페이지 ID로 페이지를 조회합니다."
     )
-    async def get_page(page_id: int) -> Dict[str, Any]:
-        """/napi/pages/{page_id} : 페이지를 조회합니다."""
+    async def get_page(page_id: int | None = None) -> Dict[str, Any]:
+        """/napi/pages/{page_id} : 페이지를 조회합니다.
+
+        `page_id`가 주어지지 않으면 구조화된 오류를 반환합니다.
+        """
+        if page_id is None:
+            return {
+                "isError": True,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "page_id 인자가 누락되었다. 정수 page_id를 전달해라.",
+                    }
+                ],
+            }
+
+        print(
+            f"[DEBUG] get_page 호출됨 - page_id={page_id}",
+            file=sys.stderr,
+        )
         return await make_api_request("GET", f"/pages/{page_id}/")
 
 
