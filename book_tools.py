@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from utils import make_api_request, put_page, upload_image
+from utils import make_api_request, put_page, upload_image, flatten_pages
 from search_utils import get_book_cache, get_page_searcher
 
 def register_book_tools(mcp_server):
@@ -29,11 +29,12 @@ def register_book_tools(mcp_server):
         if not force_refresh and cache.is_cache_valid(book_id):
             cached_data = cache.load_book_data(book_id)
             if cached_data:
+                flat_pages = flatten_pages(cached_data.get("pages", []))
                 return {
                     "book_id": book_id,
                     "subject": cached_data.get("subject", ""),
                     "summary": cached_data.get("summary", ""),
-                    "total_pages": len(cached_data.get("pages", [])),
+                    "total_pages": len(flat_pages),
                     "status": "ready"
                 }
         
@@ -45,14 +46,17 @@ def register_book_tools(mcp_server):
         # 캐시에 저장
         cache.save_book_data(book_id, book_data)
         
+        # 평면화된 페이지 수 계산
+        flat_pages = flatten_pages(book_data.get("pages", []))
+        
         return {
             "book_id": book_id,
             "subject": book_data.get("subject", ""),
             "summary": book_data.get("summary", ""),
-            "total_pages": len(book_data.get("pages", [])),
+            "total_pages": len(flat_pages),
             "status": "ready"
         }
-
+        
 
     @mcp_server.tool(
         name="search_book_pages",

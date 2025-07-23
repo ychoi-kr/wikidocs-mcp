@@ -5,6 +5,7 @@ import sys
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import hashlib
+from utils import flatten_pages
 
 class BookCache:
     """책 데이터 캐시 관리 클래스"""
@@ -116,17 +117,6 @@ class PageSearcher:
         # 공백 정리
         text = re.sub(r'\s+', ' ', text).strip()
         return text.lower()
-    
-    def _flatten_pages(self, pages: list[dict]) -> list[dict]:
-        flat: list[dict] = []
-        stack = pages[:]          # 복사해서 스택으로 사용
-        while stack:
-            node = stack.pop()
-            flat.append(node)
-            # children 이 있을 때 스택에 push
-            for child in reversed(node.get("children", [])):  # 깊이 우선
-                stack.append(child)
-        return flat
 
     def search_pages(self, book_id: int, query: str, max_results: int = 20) -> List[Dict[str, Any]]:
         """페이지에서 키워드 검색"""
@@ -139,8 +129,7 @@ class PageSearcher:
             return []
         
         results = []
-        pages = book_data.get('pages', [])
-        pages = self._flatten_pages(book_data.get("pages", []))
+        pages = flatten_pages(book_data.get("pages", []))
         
         for page in pages:
             score = self._calculate_relevance_score(page, query_normalized)
@@ -235,7 +224,7 @@ class PageSearcher:
         if not book_data:
             return []
         
-        pages = self._flatten_pages(book_data.get("pages", []))
+        pages = flatten_pages(book_data.get("pages", []))
         structure = []
         
         for page in pages:

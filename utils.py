@@ -1,6 +1,6 @@
 import os
 import httpx
-from typing import Dict, Any, Optional
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
 # .env 파일에서 환경 변수를 불러옵니다.
@@ -9,6 +9,28 @@ load_dotenv()
 # --- API 설정 ---
 WIKIDOCS_API_URL = "https://wikidocs.net/napi"
 API_TOKEN = os.getenv("WIKIDOCS_API_TOKEN")
+
+def flatten_pages(pages: List[Dict]) -> List[Dict]:
+    """
+    중첩된 페이지 구조를 평면화합니다.
+    
+    Args:
+        pages: 중첩된 페이지 리스트 (children 필드 포함)
+    
+    Returns:
+        평면화된 페이지 리스트
+    """
+    flat: List[Dict] = []
+    stack = pages[:]  # 복사해서 스택으로 사용
+    
+    while stack:
+        node = stack.pop()
+        flat.append(node)
+        # children이 있을 때 스택에 push (깊이 우선 탐색)
+        for child in reversed(node.get("children", [])):
+            stack.append(child)
+    
+    return flat
 
 async def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
     """위키독스 API 요청을 처리하는 공통 함수"""
