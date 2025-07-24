@@ -58,11 +58,13 @@ class BookCache:
             # 데이터 저장
             with open(cache_path, 'w', encoding='utf-8') as f:
                 json.dump(book_data, f, ensure_ascii=False, indent=2)
+
+            flat_pages = flatten_pages(book_data.get('pages', []))
             
             # 메타데이터 저장
             meta = {
                 'cached_at': datetime.now().isoformat(),
-                'total_pages': len(book_data.get('pages', [])),
+                'total_pages': len(flat_pages),
                 'book_subject': book_data.get('subject', ''),
                 'checksum': hashlib.md5(json.dumps(book_data, sort_keys=True).encode()).hexdigest()
             }

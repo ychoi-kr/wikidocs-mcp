@@ -16,47 +16,56 @@ def register_book_tools(mcp_server):
             return result
         return {"books": result, "total_count": len(result)}
 
-
+        
     @mcp_server.tool(
         name="get_book_info",
-        description="특정 책의 기본 정보(제목, 요약, 페이지 수)와 모든 페이지 데이터를 조회합니다. 이후 검색이나 구조 분석 도구를 사용하기 위해 필요한 첫 번째 단계입니다."
+        description="특정 책의 기본 정보(제목, 요약, 페이지 수)와 모든 페이지 데이터를 조회합니다. 항상 최신 데이터를 가져오려고 시도하며, API 요청이 실패할 경우에만 캐시를 사용합니다. 이후 검색이나 구조 분석 도구를 사용하기 위해 필요한 첫 번째 단계입니다."
     )
-    async def get_book_info(book_id: int, force_refresh: bool = False) -> Dict[str, Any]:
+    async def get_book_info(book_id: int) -> Dict[str, Any]:
         """/napi/books/{book_id} : 책을 조회하고 캐시에 저장합니다."""
         cache = get_book_cache()
         
-        # 캐시 확인
-        if not force_refresh and cache.is_cache_valid(book_id):
-            cached_data = cache.load_book_data(book_id)
-            if cached_data:
-                flat_pages = flatten_pages(cached_data.get("pages", []))
-                return {
-                    "book_id": book_id,
-                    "subject": cached_data.get("subject", ""),
-                    "summary": cached_data.get("summary", ""),
-                    "total_pages": len(flat_pages),
-                    "status": "ready"
-                }
-        
-        # API에서 데이터 가져오기
+        # 먼저 API에서 최신 데이터 가져오기 시도
         book_data = await make_api_request("GET", f"/books/{book_id}/")
-        if "error" in book_data:
-            return book_data
         
-        # 캐시에 저장
-        cache.save_book_data(book_id, book_data)
+        if "error" not in book_data:
+            # API 요청 성공 시 캐시에 저장
+            cache.save_book_data(book_id, book_data)
+            flat_pages = flatten_pages(book_data.get("pages", []))
+            
+            return {
+                "book_id": book_id,
+                "subject": book_data.get("subject", ""),
+                "summary": book_data.get("summary", ""),
+                "total_pages": len(flat_pages),
+                "status": "ready",
+                "data_source": "api"
+            }
         
-        # 평면화된 페이지 수 계산
-        flat_pages = flatten_pages(book_data.get("pages", []))
+        # API 요청 실패 시 캐시 사용 시도
+        cached_data = cache.load_book_data(book_id)
+        if cached_data:
+            flat_pages = flatten_pages(cached_data.get("pages", []))
+            cache_info = get_page_searcher().get_cache_info(book_id)
+            
+            return {
+                "book_id": book_id,
+                "subject": cached_data.get("subject", ""),
+                "summary": cached_data.get("summary", ""),
+                "total_pages": len(flat_pages),
+                "status": "ready",
+                "data_source": "cache",
+                "cached_at": cache_info.get("cached_at"),
+                "warning": "API 요청이 실패하여 캐시된 데이터를 사용했습니다."
+            }
         
+        # API 실패 + 캐시 없음 = 완전 실패
         return {
-            "book_id": book_id,
-            "subject": book_data.get("subject", ""),
-            "summary": book_data.get("summary", ""),
-            "total_pages": len(flat_pages),
-            "status": "ready"
+            "error": book_data.get("error", "Unknown error"),
+            "message": book_data.get("message", "API 요청이 실패했고 캐시된 데이터도 없습니다."),
+            "book_id": book_id
         }
-        
+
 
     @mcp_server.tool(
         name="search_book_pages",
