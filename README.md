@@ -27,7 +27,7 @@ AI 에이전트가 위키독스(Wikidocs) 책과 블로그를 읽고, 편집하�
 ### 1. 설치
 
 ```bash
-git clone https://github.com/your-username/wikidocs-mcp.git
+git clone https://github.com/ychoi-kr/wikidocs-mcp.git
 cd wikidocs-mcp
 pip install -r requirements.txt
 ```
@@ -89,6 +89,7 @@ claude mcp call wikidocs-mcp get_book_structure --json '{"book_id": 12345, "max_
 | `get_page` | 특정 페이지 내용 조회 | "페이지 456의 내용을 보여줘" |
 | `create_page` | 새 페이지 생성 | "새로운 챕터를 추가해줘" |
 | `update_page` | 페이지 내용 수정 | "이 페이지를 수정해줘" |
+| `renumber_pages` | 페이지 번호 일괄 변경 | "5.2절부터 번호를 하나씩 뒤로 밀어줘" |
 | `upload_page_image` | 페이지용 이미지 업로드 | "이미지를 업로드해줘" |
 | `get_cache_status` | 캐시 상태 확인 | "캐시 상태를 확인해줘" |
 
