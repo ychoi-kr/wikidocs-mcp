@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from utils import make_api_request, put_page, upload_image, flatten_pages
 from search_utils import get_book_cache, get_page_searcher
+import renumber_utils
 
 def register_book_tools(mcp_server):
     """책 관련 도구들을 MCP 서버에 등록"""
@@ -428,3 +429,118 @@ $$
 이 가이드를 따라야 위키독스에서 올바르게 렌더링됩니다!"""
 
 
+
+    @mcp_server.tool(
+        name="renumber_pages",
+        description="주어진 변경 목록(changes)에 따라 페이지 번호를 일괄 변경합니다. dry_run=True(기본값)로 실행하여 diff를 확인한 후, dry_run=False로 실제 변경을 수행하세요."
+    )
+    async def renumber_pages(
+        book_id: int, 
+        changes: List[Dict[str, Any]],
+        dry_run: bool = True
+    ) -> Dict[str, Any]:
+        """
+        페이지 번호 변경 실행 도구
+        
+        Args:
+            book_id: 책 ID
+            changes: 변경할 페이지들의 목록(List). 각 항목은 {"page_id": int, "new_number": str} 형태의 딕셔너리여야 합니다.
+                     (선택 사항: "old_number"는 서버가 조회하므로 생략 가능, "new_subject"가 있으면 제목도 함께 변경됨)
+            dry_run: True이면 실제 변경 없이 diff만 반환 (기본값 True)
+        """
+        results = []
+        
+        for item in changes:
+            page_id = item.get('page_id')
+            old_num = item.get('old_number')
+            new_num = item.get('new_number')
+            new_subject_input = item.get('new_subject')
+            
+            if not page_id:
+                results.append({"error": "Missing page_id", "item": item})
+                continue
+
+            # 페이지 상세 내용 가져오기 (old_number가 없거나 검증을 위해 필요)
+            page_detail = await make_api_request("GET", f"/pages/{page_id}/")
+            if "error" in page_detail:
+                results.append({
+                    "page_id": page_id,
+                    "error": "페이지 정보를 가져오는데 실패했습니다."
+                })
+                continue
+                
+            current_subject = page_detail['subject']
+            current_content = page_detail['content']
+            
+            # old_number / new_number 추론
+            if not old_num:
+                old_num = renumber_utils.get_page_number(current_subject)
+                
+            if not new_num and new_subject_input:
+                new_num = renumber_utils.get_page_number(new_subject_input)
+                
+            if not old_num or not new_num:
+                results.append({
+                    "page_id": page_id,
+                    "error": "페이지 번호를 식별할 수 없습니다.",
+                    "current_subject": current_subject,
+                    "input_item": item
+                })
+                continue
+            
+            new_subject, new_content, changed = renumber_utils.apply_renumbering(
+                current_subject, current_content, old_num, new_num
+            )
+            
+            if changed:
+                if dry_run:
+                    # Diff 생성
+                    diff = renumber_utils.generate_diff(
+                        f"Subject: {current_subject}\n\n{current_content}",
+                        f"Subject: {new_subject}\n\n{new_content}",
+                        filename=f"Page {page_id}"
+                    )
+                    results.append({
+                        "page_id": page_id,
+                        "old_number": old_num,
+                        "new_number": new_num,
+                        "diff": diff
+                    })
+                else:
+                    # 실제 업데이트
+                    update_data = {
+                        "id": page_id,
+                        "subject": new_subject,
+                        "content": new_content,
+                        "book_id": book_id
+                    }
+                    res = await put_page(page_id, update_data)
+                    if "error" not in res:
+                        results.append({
+                            "page_id": page_id,
+                            "status": "updated",
+                            "old_number": old_num,
+                            "new_number": new_num
+                        })
+                    else:
+                         results.append({
+                            "page_id": page_id,
+                            "error": res.get("message", "Update failed")
+                        })
+            else:
+                results.append({
+                    "page_id": page_id,
+                    "status": "skipped",
+                    "reason": "No changes detected via regex"
+                })
+        
+        # 캐시 무효화
+        if not dry_run and results:
+            get_book_cache().invalidate_book(book_id)
+            
+        return {
+            "book_id": book_id,
+            "dry_run": dry_run,
+            "executed_count": len(results),
+            "results": results
+        }
